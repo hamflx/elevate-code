@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "crates/elevate-code",
+  "crates/elevate-code-derive",
+  "examples/*"
+]
