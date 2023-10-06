@@ -6,7 +6,7 @@ description = "将标记的函数自动以管理员权限运行。"
 repository = "https://github.com/hamflx/elevate-code"
 license = "MIT"
 authors = ["hamflx <a@hamflx.cn>"]
-readme = "../README.md"
+readme = "../../README.md"
 
 [lib]
 proc-macro = true
