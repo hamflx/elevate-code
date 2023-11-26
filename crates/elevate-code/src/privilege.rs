@@ -27,7 +27,10 @@ use windows::{
     },
 };
 
-use crate::util::{create_process, CommandLineBuilder, ProcessControlFlow};
+use crate::{
+    util::{create_process, CommandLineBuilder, ProcessControlFlow},
+    ForkResult,
+};
 
 const MAXIMUM_ALLOWED: TOKEN_ACCESS_MASK = TOKEN_ACCESS_MASK(0x02000000);
 const PROCESS_ACCESS_TOKEN: PROCESS_INFORMATION_CLASS = PROCESS_INFORMATION_CLASS(9);
@@ -35,7 +38,7 @@ const PROCESS_ACCESS_TOKEN: PROCESS_INFORMATION_CLASS = PROCESS_INFORMATION_CLAS
 #[link(name = "ntdll.dll", kind = "raw-dylib", modifiers = "+verbatim")]
 extern "system" {
     #[link_name = "NtSetInformationProcess"]
-    pub fn NtSetInformationProcess(
+    fn NtSetInformationProcess(
         process: HANDLE,
         processinformationclass: PROCESS_INFORMATION_CLASS,
         lpprocessinformation: *mut ProcessAccessToken,
@@ -102,8 +105,8 @@ fn start_elevation_host(receiver: Receiver<ElevationRequest>) -> Result<u16, Str
         if let Ok((client, _)) = listener.accept() {
             let _ = client.set_nodelay(true);
             let Ok(stream_cloned) = client.try_clone() else {
-              return;
-          };
+                return;
+            };
 
             // receive
             let reader = BufReader::new(stream_cloned);
@@ -212,19 +215,16 @@ pub trait ElevatedOperation: DeserializeOwned + Serialize {
         if is_elevated() {
             unreachable!();
         }
-
-        let id = Self::id();
-        let json = serde_json::to_string(self).map_err(|err| format!("{err}"))?;
-        let token = ElevateToken::Execute {
-            task_id: id.to_string(),
-            payload: json,
-        };
-        create_process(&[&token.to_string()], |pid| {
-            match GLOBAL_CLIENT.request(ElevationRequest::new(pid)) {
+        let ret = create_process(
+            |pid| match GLOBAL_CLIENT.request(ElevationRequest::new(pid)) {
                 Ok(_) => ProcessControlFlow::ResumeMainThread,
                 Err(_) => ProcessControlFlow::Terminate,
-            }
-        });
+            },
+        )
+        .unwrap();
+        if matches!(ret, ForkResult::Child) {
+            self.execute().unwrap();
+        }
 
         Ok(())
     }

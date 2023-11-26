@@ -5,8 +5,6 @@ use syn::parse_macro_input;
 #[proc_macro_attribute]
 pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemFn);
-    let mut inner = input.clone();
-    let fn_ident = &input.sig.ident;
     let fn_name = input.sig.ident.to_string();
     let sig = &input.sig;
     let args = input
@@ -34,57 +32,23 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect::<Vec<_>>();
 
+    let mut inner = input.clone();
     inner.sig.ident = format_ident!("_{}", fn_name);
     let inner_name = &inner.sig.ident;
 
-    let (call, serialization) = if type_list.is_empty() {
-        (
-            quote! {
-                #fn_ident();
-                std::process::exit(0);
-            },
-            quote! {
-                Some(String::new())
-            },
-        )
+    let serialization = if type_list.is_empty() {
+        quote! {
+            Some(String::new())
+        }
     } else {
-        (
-            quote! {
-                let (#(#args),*,) : (#(#type_list),*,) = _elevate_code::serde_json::from_str(&payload).map_err(|err| format!("{err}")).unwrap();
-                #fn_ident(
-                    #(#args),*
-                );
-                std::process::exit(0);
-            },
-            quote! {
-                _elevate_code::serde_json::to_string(
-                    &(#(&#args),*,)
-                ).map_err(|err| format!("{err}")).ok()
-            },
-        )
+        quote! {
+            _elevate_code::serde_json::to_string(
+                &(#(&#args),*,)
+            ).map_err(|err| format!("{err}")).ok()
+        }
     };
 
     let decoration = quote! {
-        const _: () = {
-            extern crate elevate_code as _elevate_code;
-
-            struct T;
-
-            #[_elevate_code::ctor::ctor]
-            fn init() {
-                let id: &str = #fn_name;
-
-                let cmd_line = _elevate_code::ElevateToken::from_command_line();
-
-                match _elevate_code::ElevateToken::from_command_line() {
-                    Some(_elevate_code::ElevateToken::Execute { task_id, payload }) if id == task_id => {
-                        #call
-                    }
-                    _ => {},
-                }
-            }
-        };
-
         #sig {
             extern crate elevate_code as _elevate_code;
 
@@ -97,16 +61,15 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             if let Some(json) = #serialization {
-                let token = _elevate_code::ElevateToken::Execute {
-                    task_id: id.to_string(),
-                    payload: json,
-                };
-                _elevate_code::create_process(&[&token.to_string()], |pid| {
+                let ret = _elevate_code::create_process(|pid| {
                     match _elevate_code::GLOBAL_CLIENT.request(_elevate_code::ElevationRequest::new(pid)) {
                         Ok(_) => _elevate_code::ProcessControlFlow::ResumeMainThread,
                         Err(err) => _elevate_code::ProcessControlFlow::Terminate,
                     }
-                });
+                }).unwrap();
+                if matches!(ret, _elevate_code::ForkResult::Child) {
+                    return #inner_name(#(#args),*);
+                }
             } else {
                 panic!("Error on serializing arguments")
             }
