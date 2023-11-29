@@ -13,38 +13,18 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use windows::{
     core::PCSTR,
     Win32::{
-        Foundation::{CloseHandle, HANDLE, HWND},
-        Security::{
-            AdjustTokenPrivileges, DuplicateTokenEx, GetTokenInformation, LookupPrivilegeValueA,
-            SecurityImpersonation, TokenElevation, TokenPrimary, LUID_AND_ATTRIBUTES,
-            SE_PRIVILEGE_ENABLED, TOKEN_ACCESS_MASK, TOKEN_ELEVATION, TOKEN_PRIVILEGES,
-        },
-        System::Threading::{
-            GetCurrentProcessId, OpenProcess, OpenProcessToken, PROCESS_ACCESS_RIGHTS,
-            PROCESS_ALL_ACCESS, PROCESS_INFORMATION_CLASS, PROCESS_SET_INFORMATION,
-        },
+        Foundation::HWND,
+        System::Threading::PROCESS_SET_INFORMATION,
         UI::{Shell::ShellExecuteA, WindowsAndMessaging::SW_HIDE},
     },
 };
 
+use crate::process::ProcessHandle;
+use crate::token::ProcessToken;
 use crate::{
     util::{create_process, CommandLineBuilder, ProcessControlFlow},
     ForkResult,
 };
-
-const MAXIMUM_ALLOWED: TOKEN_ACCESS_MASK = TOKEN_ACCESS_MASK(0x02000000);
-const PROCESS_ACCESS_TOKEN: PROCESS_INFORMATION_CLASS = PROCESS_INFORMATION_CLASS(9);
-
-#[link(name = "ntdll.dll", kind = "raw-dylib", modifiers = "+verbatim")]
-extern "system" {
-    #[link_name = "NtSetInformationProcess"]
-    fn NtSetInformationProcess(
-        process: HANDLE,
-        processinformationclass: PROCESS_INFORMATION_CLASS,
-        lpprocessinformation: *mut ProcessAccessToken,
-        processInformationLength: usize,
-    ) -> isize;
-}
 
 #[ctor::ctor]
 fn elevate_by_command_line() {
@@ -307,129 +287,6 @@ impl ElevateToken {
             }
         }
     }
-}
-
-pub struct ProcessHandle(HANDLE);
-
-impl ProcessHandle {
-    pub fn from_pid(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> Result<Self, String> {
-        Ok(Self(unsafe {
-            OpenProcess(access, true, pid).map_err(|err| format!("{err}"))
-        }?))
-    }
-
-    pub fn from_current_process() -> Result<Self, String> {
-        Self::from_pid(unsafe { GetCurrentProcessId() }, PROCESS_ALL_ACCESS)
-    }
-
-    pub fn replace_primary_token(&self, token: &ProcessToken) -> Result<(), String> {
-        let mut info: ProcessAccessToken = ProcessAccessToken {
-            thread: HANDLE::default(),
-            token: token.1,
-        };
-        let ret = unsafe {
-            NtSetInformationProcess(
-                self.0,
-                PROCESS_ACCESS_TOKEN,
-                &mut info,
-                std::mem::size_of_val(&info),
-            )
-        };
-        match ret {
-            0 => Ok(()),
-            code => Err(format!("{}", std::io::Error::from_raw_os_error(code as _))),
-        }
-    }
-}
-
-impl Drop for ProcessHandle {
-    fn drop(&mut self) {
-        let _ = unsafe { CloseHandle(self.0) };
-    }
-}
-
-pub struct ProcessToken<'h>(&'h ProcessHandle, HANDLE);
-
-impl<'h> ProcessToken<'h> {
-    pub fn open_process(process: &'h ProcessHandle) -> Result<Self, String> {
-        let mut token = Default::default();
-        unsafe { OpenProcessToken(process.0, MAXIMUM_ALLOWED, &mut token) }
-            .map_err(|err| format!("{err}"))?;
-        Ok(Self(process, token))
-    }
-
-    #[allow(dead_code)]
-    pub fn enable_privilege(&self, name: &str) -> Result<(), String> {
-        let name = CString::new(name).map_err(|err| format!("{err}"))?;
-        let mut luid = Default::default();
-        unsafe {
-            LookupPrivilegeValueA(
-                PCSTR::null(),
-                PCSTR::from_raw(name.as_ptr() as _),
-                &mut luid,
-            )
-            .map_err(|err| format!("{err}"))?
-        };
-
-        let tp = TOKEN_PRIVILEGES {
-            PrivilegeCount: 1,
-            Privileges: [LUID_AND_ATTRIBUTES {
-                Attributes: SE_PRIVILEGE_ENABLED,
-                Luid: luid,
-            }],
-        };
-        unsafe {
-            AdjustTokenPrivileges(self.1, false, Some(&tp), 0, None, None)
-                .map_err(|err| format!("{err}"))?
-        };
-
-        Ok(())
-    }
-
-    pub fn duplicate(&self) -> Result<Self, String> {
-        let mut new_token = Default::default();
-        unsafe {
-            DuplicateTokenEx(
-                self.1,
-                MAXIMUM_ALLOWED,
-                None,
-                SecurityImpersonation,
-                TokenPrimary,
-                &mut new_token,
-            )
-            .map_err(|err| format!("{err}"))?
-        };
-        Ok(Self(self.0, new_token))
-    }
-
-    pub fn is_elevated(&self) -> Result<bool, String> {
-        let mut elevation: TOKEN_ELEVATION = TOKEN_ELEVATION { TokenIsElevated: 0 };
-        let size = std::mem::size_of::<TOKEN_ELEVATION>() as u32;
-        let mut ret_size = size;
-        unsafe {
-            GetTokenInformation(
-                self.1,
-                TokenElevation,
-                Some(&mut elevation as *const _ as *mut _),
-                size,
-                &mut ret_size,
-            )
-        }
-        .map_err(|err| format!("{err}"))?;
-        Ok(elevation.TokenIsElevated != 0)
-    }
-}
-
-impl<'h> Drop for ProcessToken<'h> {
-    fn drop(&mut self) {
-        let _ = unsafe { CloseHandle(self.1) };
-    }
-}
-
-#[repr(C)]
-pub struct ProcessAccessToken {
-    token: HANDLE,
-    thread: HANDLE,
 }
 
 pub fn is_elevated() -> bool {
