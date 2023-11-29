@@ -1,8 +1,8 @@
 use crate::token::ProcessToken;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Threading::{
-    GetCurrentProcessId, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_ALL_ACCESS,
-    PROCESS_INFORMATION_CLASS,
+    GetCurrentProcessId, OpenProcess, WaitForSingleObject, INFINITE, PROCESS_ACCESS_RIGHTS,
+    PROCESS_ALL_ACCESS, PROCESS_INFORMATION_CLASS,
 };
 
 const PROCESS_ACCESS_TOKEN: PROCESS_INFORMATION_CLASS = PROCESS_INFORMATION_CLASS(9);
@@ -27,17 +27,17 @@ extern "system" {
 pub struct ProcessHandle(pub(crate) HANDLE);
 
 impl ProcessHandle {
-    pub fn from_pid(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> Result<Self, String> {
+    pub(crate) fn from_pid(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> Result<Self, String> {
         Ok(Self(unsafe {
             OpenProcess(access, true, pid).map_err(|err| format!("{err}"))
         }?))
     }
 
-    pub fn from_current_process() -> Result<Self, String> {
+    pub(crate) fn from_current_process() -> Result<Self, String> {
         Self::from_pid(unsafe { GetCurrentProcessId() }, PROCESS_ALL_ACCESS)
     }
 
-    pub fn replace_primary_token(&self, token: &ProcessToken) -> Result<(), String> {
+    pub(crate) fn replace_primary_token(&self, token: &ProcessToken) -> Result<(), String> {
         let mut info: ProcessAccessToken = ProcessAccessToken {
             thread: HANDLE::default(),
             token: token.raw_handle(),
@@ -54,6 +54,10 @@ impl ProcessHandle {
             0 => Ok(()),
             code => Err(format!("{}", std::io::Error::from_raw_os_error(code as _))),
         }
+    }
+
+    pub(crate) fn wait(&self) {
+        unsafe { WaitForSingleObject(self.0, INFINITE) };
     }
 }
 

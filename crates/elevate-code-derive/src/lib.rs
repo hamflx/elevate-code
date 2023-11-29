@@ -68,7 +68,9 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }).unwrap();
                 if matches!(ret, _elevate_code::ForkResult::Child) {
-                    return #inner_name(#(#args),*);
+                    #inner_name(#(#args),*);
+                    // todo 返回值。
+                    std::process::exit(0);
                 }
             } else {
                 panic!("Error on serializing arguments")

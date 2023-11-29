@@ -1,8 +1,8 @@
+use rand::random;
+use std::net::UdpSocket;
 use std::{
     collections::HashMap,
     ffi::CString,
-    io::{BufRead, BufReader, BufWriter, Write},
-    net::{TcpListener, TcpStream},
     sync::{
         mpsc::{channel, Receiver, Sender},
         Mutex,
@@ -10,6 +10,7 @@ use std::{
 };
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use windows::Win32::System::Threading::PROCESS_SYNCHRONIZE;
 use windows::{
     core::PCSTR,
     Win32::{
@@ -28,7 +29,8 @@ use crate::{
 
 #[ctor::ctor]
 fn elevate_by_command_line() {
-    if let Some(ElevateToken::Elevate { port }) = ElevateToken::from_command_line() {
+    if let Some(ElevateToken::Elevate { port, ppid }) = ElevateToken::from_command_line() {
+        listen_parent_process_exit(ppid);
         let code = match listen_elevation_request(port) {
             Ok(_) => 0,
             Err(_) => -1,
@@ -37,16 +39,32 @@ fn elevate_by_command_line() {
     }
 }
 
+fn listen_parent_process_exit(ppid: u32) {
+    std::thread::spawn(move || {
+        let process = ProcessHandle::from_pid(ppid, PROCESS_SYNCHRONIZE).unwrap();
+        process.wait();
+        std::process::exit(0);
+    });
+}
+
 fn listen_elevation_request(port: u16) -> Result<(), String> {
-    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).map_err(|err| format!("{err}"))?;
-    stream.set_nodelay(true).map_err(|err| format!("{err}"))?;
+    let sock = UdpSocket::bind("127.0.0.1:0").map_err(|err| format!("{err}"))?;
+    sock.connect(format!("127.0.0.1:{port}"))
+        .map_err(|err| format!("{err}"))?;
 
-    let reader = BufReader::new(stream.try_clone().map_err(|err| format!("{err}"))?);
-    let mut writer = BufWriter::new(stream);
+    sock.send("hello".as_bytes())
+        .map_err(|err| format!("{err}"))?;
 
-    for l in reader.lines() {
-        let l = l.map_err(|err| format!("{err}"))?;
-        let request: ElevationRequest = serde_json::from_str(&l).map_err(|err| format!("{err}"))?;
+    loop {
+        let mut buf = vec![0; 1048576];
+        let (len, _) = match sock.recv_from(&mut buf) {
+            Ok((0, _)) | Err(_) => break,
+            Ok((len, peer)) => (len, peer),
+        };
+        let message = String::from_utf8(buf[..len].to_vec())
+            .map_err(|err| format!("parse utf8 error: {err}"))?;
+        let request: ElevationRequest =
+            serde_json::from_str(&message).map_err(|err| format!("{err}"))?;
         let result = replace_with_current_token(request.pid);
         let success = result.is_ok();
         let error = result.map_or_else(|err| Some(err), |_| None);
@@ -59,10 +77,7 @@ fn listen_elevation_request(port: u16) -> Result<(), String> {
             })
             .map_err(|err| format!("{err}"))?
         );
-        writer
-            .write_all(msg.as_bytes())
-            .map_err(|err| format!("{err}"))?;
-        writer.flush().map_err(|err| format!("{err}"))?;
+        sock.send(msg.as_bytes()).map_err(|err| format!("{err}"))?;
     }
 
     Ok(())
@@ -76,50 +91,41 @@ pub struct ElevationClient {
 }
 
 fn start_elevation_host(receiver: Receiver<ElevationRequest>) -> Result<u16, String> {
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|err| format!("{err}"))?;
-    let port = listener
+    let sock_read = UdpSocket::bind("127.0.0.1:0").map_err(|err| format!("{err}"))?;
+    let port = sock_read
         .local_addr()
         .map_err(|err| format!("{err}"))?
         .port();
+
     std::thread::spawn(move || {
-        if let Ok((client, _)) = listener.accept() {
-            let _ = client.set_nodelay(true);
-            let Ok(stream_cloned) = client.try_clone() else {
-                return;
+        let mut buf = vec![0; 1048576];
+
+        let (_, peer) = match sock_read.recv_from(&mut buf) {
+            Ok((0, _)) | Err(_) => return,
+            Ok((len, peer)) => (len, peer),
+        };
+        let sock_write = sock_read.try_clone().unwrap();
+        std::thread::spawn(move || {
+            while let Ok(req) = { receiver.recv() } {
+                match serde_json::to_string(&req).map(|s| s + "\n") {
+                    Ok(msg) => {
+                        sock_write.send_to(msg.as_bytes(), peer).unwrap();
+                    }
+                    Err(_) => {}
+                }
+            }
+        });
+
+        loop {
+            let (len, _) = match sock_read.recv_from(&mut buf) {
+                Ok((0, _)) | Err(_) => return,
+                Ok((len, peer)) => (len, peer),
             };
-
-            // receive
-            let reader = BufReader::new(stream_cloned);
-            let t1 = std::thread::spawn(move || {
-                for l in reader.lines() {
-                    match l {
-                        Ok(l) => {
-                            let _ = GLOBAL_CLIENT.receive(&l);
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-
-            // send
-            let mut writer = BufWriter::new(client);
-            let t2 = std::thread::spawn(move || {
-                while let Ok(req) = { receiver.recv() } {
-                    match serde_json::to_string(&req).map(|s| s + "\n") {
-                        Ok(msg) => {
-                            let _ = writer
-                                .write_all(msg.as_bytes())
-                                .and_then(|_| writer.flush());
-                        }
-                        Err(_) => {}
-                    }
-                }
-            });
-
-            let _ = t1.join();
-            let _ = t2.join();
+            let message = String::from_utf8(buf[..len].to_vec()).unwrap();
+            let _ = GLOBAL_CLIENT.receive(&message);
         }
     });
+
     Ok(port)
 }
 
@@ -139,8 +145,8 @@ impl ElevationClient {
                 *lock = Some(sender);
 
                 let port = start_elevation_host(receiver)?;
-
-                let token = ElevateToken::Elevate { port };
+                let ppid = std::process::id();
+                let token = ElevateToken::Elevate { port, ppid };
                 let cmd = CommandLineBuilder::new().arg(&token.to_string()).encode();
                 run_as(
                     std::env::current_exe()
@@ -214,7 +220,7 @@ pub trait ElevatedOperation: DeserializeOwned + Serialize {
 
 #[derive(Debug)]
 pub enum ElevateToken {
-    Elevate { port: u16 },
+    Elevate { port: u16, ppid: u32 },
     Execute { task_id: String, payload: String },
 }
 
@@ -234,11 +240,7 @@ pub struct ElevationResponse {
 impl ElevationRequest {
     pub fn new(pid: u32) -> Self {
         Self {
-            id: std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis()
-                .to_string(),
+            id: random::<usize>().to_string(),
             pid,
         }
     }
@@ -263,7 +265,8 @@ impl ElevateToken {
             "elevate" => {
                 let map: HashMap<_, _> = s.split(',').filter_map(|s| s.split_once('=')).collect();
                 let port: u16 = map.get("port")?.parse().ok()?;
-                Some(ElevateToken::Elevate { port })
+                let ppid: u32 = map.get("ppid")?.parse().ok()?;
+                Some(ElevateToken::Elevate { port, ppid })
             }
             "execute" => {
                 let (id, s) = s.split_once(',')?;
@@ -279,8 +282,8 @@ impl ElevateToken {
 
     pub fn to_string(&self) -> String {
         match self {
-            ElevateToken::Elevate { port } => {
-                format!("--elevate-token=elevate,port={port}")
+            ElevateToken::Elevate { port, ppid } => {
+                format!("--elevate-token=elevate,port={port},ppid={ppid}")
             }
             ElevateToken::Execute { task_id, payload } => {
                 format!("--elevate-token=execute,id={},{}", task_id, payload)
