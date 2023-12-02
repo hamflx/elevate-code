@@ -1,4 +1,5 @@
 use elevated::is_elevated;
+use serde::{Deserialize, Serialize};
 
 fn main() {
     println!(
@@ -6,37 +7,40 @@ fn main() {
         is_elevated(),
         std::process::id()
     );
-    admin_right("Hello Rust".to_string());
-    admin_right2("Hello Rust".to_string());
-    admin_right3("Hello Rust".to_string());
+    let ret1 = admin_right("Hello Rust".to_string());
+    println!("ret1: {}", ret1);
+    let ret2 = admin_right2("Hello Rust".to_string());
+    println!("ret2: {:#?}", ret2);
 }
 
 #[elevated::elevated]
-fn admin_right(msg: String) {
+fn admin_right(msg: String) -> u32 {
+    let pid = std::process::id();
     println!(
         "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",
         msg,
         is_elevated(),
-        std::process::id(),
+        pid,
     );
+    pid
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct ComplexValue {
+    pid: u32,
+    args: Vec<String>,
+}
 #[elevated::elevated]
-fn admin_right2(msg: String) {
+fn admin_right2(msg: String) -> ComplexValue {
+    let pid = std::process::id();
     println!(
         "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",
         msg,
         is_elevated(),
-        std::process::id(),
+        pid,
     );
-}
-
-#[elevated::elevated]
-fn admin_right3(msg: String) {
-    println!(
-        "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",
-        msg,
-        is_elevated(),
-        std::process::id(),
-    );
+    ComplexValue {
+        pid,
+        args: std::env::args().collect(),
+    }
 }

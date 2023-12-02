@@ -23,6 +23,7 @@ name = "elevate-example"
 version = "0.1.0"
 dependencies = [
  "elevated",
+ "serde",
 ]
 
 [[package]]
