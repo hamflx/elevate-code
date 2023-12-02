@@ -21,3 +21,4 @@ serde_json = "1.0.107"
 
 [dependencies.winapi]
 features = ["std"]
+version = "0.3.9"
