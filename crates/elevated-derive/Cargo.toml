@@ -1,6 +1,6 @@
 [package]
 name = "elevated-derive"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "将标记的函数自动以管理员权限运行。"
 repository = "https://github.com/hamflx/elevated"
