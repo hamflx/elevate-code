@@ -1,9 +1,9 @@
 [package]
-name = "elevate-code"
+name = "elevated"
 version = "0.1.0"
 edition = "2021"
 description = "将标记的函数自动以管理员权限运行。"
-repository = "https://github.com/hamflx/elevate-code"
+repository = "https://github.com/hamflx/elevated"
 license = "MIT"
 authors = ["hamflx <a@hamflx.cn>"]
 readme = "../../README.md"
@@ -12,7 +12,7 @@ readme = "../../README.md"
 
 [dependencies]
 ctor = "0.2.5"
-elevate-code-derive = { version = "0.1.0", path = "../elevate-code-derive" }
+elevated-derive = { version = "0.1.0", path = "../elevated-derive" }
 windows = { version = "0.51.1", features = ["Win32_System_Threading", "Win32_Foundation", "Win32_Security", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_WindowsProgramming", "Win32_System_Console"] }
 ntapi = { version = "0.4.1", features = ["impl-default"] }
 rand = "0.8.5"

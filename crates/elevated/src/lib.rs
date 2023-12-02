@@ -4,7 +4,7 @@ mod process;
 mod token;
 mod util;
 
-pub use elevate_code_derive::elevate_code;
+pub use elevated_derive::elevated;
 
 pub use ctor;
 pub use privilege::*;

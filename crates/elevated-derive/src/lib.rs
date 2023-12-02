@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::parse_macro_input;
 
 #[proc_macro_attribute]
-pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn elevated(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemFn);
     let fn_name = input.sig.ident.to_string();
     let sig = &input.sig;
@@ -42,7 +42,7 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     } else {
         quote! {
-            _elevate_code::serde_json::to_string(
+            _elevated::serde_json::to_string(
                 &(#(&#args),*,)
             ).map_err(|err| format!("{err}")).ok()
         }
@@ -50,25 +50,25 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let decoration = quote! {
         #sig {
-            extern crate elevate_code as _elevate_code;
+            extern crate elevated as _elevated;
 
             #inner
 
             let id: &str = #fn_name;
 
-            if _elevate_code::is_elevated() {
+            if _elevated::is_elevated() {
                 return #inner_name(#(#args),*);
             }
 
             if let Some(json) = #serialization {
-                let (p, mut c) = _elevate_code::channel::InterProcessChannelPeer::new();
-                let ret = _elevate_code::create_process(|pid| {
-                    match _elevate_code::GLOBAL_CLIENT.request(_elevate_code::ElevationRequest::new(pid)) {
-                        Ok(_) => _elevate_code::ProcessControlFlow::ResumeMainThread,
-                        Err(err) => _elevate_code::ProcessControlFlow::Terminate,
+                let (p, mut c) = _elevated::channel::InterProcessChannelPeer::new();
+                let ret = _elevated::create_process(|pid| {
+                    match _elevated::GLOBAL_CLIENT.request(_elevated::ElevationRequest::new(pid)) {
+                        Ok(_) => _elevated::ProcessControlFlow::ResumeMainThread,
+                        Err(err) => _elevated::ProcessControlFlow::Terminate,
                     }
                 }).unwrap();
-                if matches!(ret, _elevate_code::ForkResult::Child) {
+                if matches!(ret, _elevated::ForkResult::Child) {
                     #inner_name(#(#args),*);
                     // todo 返回值。
                     c.send("hello".as_bytes());

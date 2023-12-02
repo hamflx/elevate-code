@@ -19,11 +19,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "elevate-code"
+name = "elevate-example"
+version = "0.1.0"
+dependencies = [
+ "elevated",
+]
+
+[[package]]
+name = "elevated"
 version = "0.1.0"
 dependencies = [
  "ctor",
- "elevate-code-derive",
+ "elevated-derive",
  "ntapi",
  "rand",
  "serde",
@@ -33,18 +40,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "elevate-code-derive"
+name = "elevated-derive"
 version = "0.1.0"
 dependencies = [
  "quote",
  "syn",
-]
-
-[[package]]
-name = "elevate-example"
-version = "0.1.0"
-dependencies = [
- "elevate-code",
 ]
 
 [[package]]

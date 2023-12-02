@@ -1,4 +1,4 @@
-use elevate_code::is_elevated;
+use elevated::is_elevated;
 
 fn main() {
     println!(
@@ -11,7 +11,7 @@ fn main() {
     admin_right3("Hello Rust".to_string());
 }
 
-#[elevate_code::elevate_code]
+#[elevated::elevated]
 fn admin_right(msg: String) {
     println!(
         "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",
@@ -21,7 +21,7 @@ fn admin_right(msg: String) {
     );
 }
 
-#[elevate_code::elevate_code]
+#[elevated::elevated]
 fn admin_right2(msg: String) {
     println!(
         "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",
@@ -31,7 +31,7 @@ fn admin_right2(msg: String) {
     );
 }
 
-#[elevate_code::elevate_code]
+#[elevated::elevated]
 fn admin_right3(msg: String) {
     println!(
         "这里是以管理员权限执行的代码：msg={}, is_elevated={}, pid={}",

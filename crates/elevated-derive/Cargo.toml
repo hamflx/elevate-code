@@ -1,9 +1,9 @@
 [package]
-name = "elevate-code-derive"
+name = "elevated-derive"
 version = "0.1.0"
 edition = "2021"
 description = "将标记的函数自动以管理员权限运行。"
-repository = "https://github.com/hamflx/elevate-code"
+repository = "https://github.com/hamflx/elevated"
 license = "MIT"
 authors = ["hamflx <a@hamflx.cn>"]
 readme = "../../README.md"

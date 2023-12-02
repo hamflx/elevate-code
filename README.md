@@ -8,12 +8,12 @@ fn main() {
     admin_right("Hello Rust".to_string());
 }
 
-#[elevate_code::elevate_code]
+#[elevated::elevated]
 fn admin_right(msg: String) {
     println!("这里是以管理员权限执行的代码：{msg}");
 }
 ```
 
-**注意，在 `elevate_code` 宏标记的函数中，不要使用全局变量，因为全局变量可能还没有初始化，而且，被标记的函数是使用新的进程启动的，全局变量的取值可能不对。**
+**注意，在 `elevated` 宏标记的函数中，不要使用全局变量，因为全局变量可能还没有初始化，而且，被标记的函数是使用新的进程启动的，全局变量的取值可能不对。**
 
-**注意，被 `elevate_code` 宏标记的函数不可以重名。**
+**注意，被 `elevated` 宏标记的函数不可以重名。**
