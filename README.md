@@ -1,4 +1,4 @@
-# Elevate Code
+# elevated
 
 通过一个宏，自动将函数包装为管理员权限执行，使用方法：
 
