@@ -61,6 +61,7 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             if let Some(json) = #serialization {
+                let (p, mut c) = _elevate_code::channel::InterProcessChannelPeer::new();
                 let ret = _elevate_code::create_process(|pid| {
                     match _elevate_code::GLOBAL_CLIENT.request(_elevate_code::ElevationRequest::new(pid)) {
                         Ok(_) => _elevate_code::ProcessControlFlow::ResumeMainThread,
@@ -70,7 +71,11 @@ pub fn elevate_code(_attr: TokenStream, input: TokenStream) -> TokenStream {
                 if matches!(ret, _elevate_code::ForkResult::Child) {
                     #inner_name(#(#args),*);
                     // todo 返回值。
+                    c.send("hello".as_bytes());
                     std::process::exit(0);
+                } else {
+                    // 等待调用结果。
+                    p.recv();
                 }
             } else {
                 panic!("Error on serializing arguments")

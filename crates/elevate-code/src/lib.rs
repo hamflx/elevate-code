@@ -1,3 +1,4 @@
+pub mod channel;
 mod privilege;
 mod process;
 mod token;
