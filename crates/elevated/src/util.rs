@@ -241,14 +241,6 @@ unsafe fn set_inheritance_handles(snapshot: &[HandleEntry], op: Operation) {
     }
 }
 
-// struct NamedPipe {}
-
-extern "C" fn main() {}
-
-pub fn test() {
-    println!("main in lib: {:?}", main as *const ());
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct TaskInfo {
     pub(crate) port: u16,
@@ -266,22 +258,6 @@ impl TaskInfo {
             args,
         }
     }
-}
-
-pub fn read_task_info() -> Option<String> {
-    let pid = std::process::id();
-    let pipe_name = format!("\\\\.\\pipe\\elevated_task_{}", pid);
-    match std::fs::read_to_string(&pipe_name) {
-        Ok(content) => Some(content),
-        Err(err) => {
-            println!("open {} error: {}", pipe_name, err);
-            None
-        }
-    }
-}
-
-pub fn encode_task_info(caller: fn(String) -> String) -> String {
-    format!("{}", caller as *const () as usize)
 }
 
 pub struct PipeClient {
@@ -370,7 +346,6 @@ impl NamedPipeServer {
         if handle.is_invalid() {
             return Err("invalid pipe handle".to_string());
         }
-        println!("==> pipe served at {}", name);
 
         let pipe = unsafe { std::fs::File::from_raw_handle(handle.0 as _) };
         Ok(Self { pipe })

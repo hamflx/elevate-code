@@ -27,10 +27,7 @@ use crate::util::CommandLineBuilder;
 
 pub fn execute_elevation_and_tasks() {
     elevate_by_command_line();
-    match execute_tasks() {
-        Ok(_) => todo!(),
-        Err(err) => println!("execute_tasks error: {err}"),
-    };
+    let _ = execute_tasks();
 }
 
 fn elevate_by_command_line() {
