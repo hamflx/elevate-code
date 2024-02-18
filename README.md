@@ -3,6 +3,7 @@
 通过一个宏，自动将函数包装为管理员权限执行，使用方法：
 
 ```rust
+#[elevated::main]
 fn main() {
     println!("这里是以普通权限执行的代码");
     admin_right("Hello Rust".to_string());
