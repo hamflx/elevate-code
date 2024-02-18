@@ -1,6 +1,7 @@
 use elevated::is_elevated;
 use serde::{Deserialize, Serialize};
 
+#[elevated::main]
 fn main() {
     println!(
         "这里是以普通权限执行的代码：is_elevated={}, pid={}",

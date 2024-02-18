@@ -1,8 +1,12 @@
+use std::ops::Deref;
+
 use crate::token::ProcessToken;
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{
+    CloseHandle, DuplicateHandle, BOOL, DUPLICATE_SAME_ACCESS, HANDLE,
+};
 use windows::Win32::System::Threading::{
-    GetCurrentProcessId, GetProcessId, OpenProcess, ResumeThread, TerminateProcess,
-    WaitForSingleObject, INFINITE, PROCESS_ACCESS_RIGHTS, PROCESS_ALL_ACCESS,
+    GetCurrentProcess, GetCurrentProcessId, GetProcessId, OpenProcess, ResumeThread,
+    TerminateProcess, WaitForSingleObject, INFINITE, PROCESS_ACCESS_RIGHTS, PROCESS_ALL_ACCESS,
     PROCESS_INFORMATION_CLASS,
 };
 
@@ -43,7 +47,47 @@ impl Drop for ThreadHandle {
     }
 }
 
+pub struct AutoTerminateProcess<P: AsRef<ProcessHandle>>(pub(crate) P);
+
+impl<P> Deref for AutoTerminateProcess<P>
+where
+    P: AsRef<ProcessHandle>,
+{
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<P> Drop for AutoTerminateProcess<P>
+where
+    P: AsRef<ProcessHandle>,
+{
+    fn drop(&mut self) {
+        let _ = self.as_ref().terminate();
+    }
+}
+
+impl<P> AutoTerminateProcess<P>
+where
+    P: AsRef<ProcessHandle>,
+{
+    pub fn new(process: P) -> Self
+    where
+        P: AsRef<ProcessHandle>,
+    {
+        Self(process)
+    }
+}
+
 pub struct ProcessHandle(pub(crate) HANDLE);
+
+impl AsRef<ProcessHandle> for ProcessHandle {
+    fn as_ref(&self) -> &ProcessHandle {
+        self
+    }
+}
 
 impl ProcessHandle {
     pub(crate) fn from_pid(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> Result<Self, String> {
@@ -83,7 +127,25 @@ impl ProcessHandle {
         }
     }
 
-    pub(crate) fn terminate(self) -> std::io::Result<()> {
+    pub(crate) fn dupe(&self) -> Result<Self, String> {
+        let current_process = unsafe { GetCurrentProcess() };
+        let mut dupe = Default::default();
+        unsafe {
+            DuplicateHandle(
+                current_process,
+                self.0,
+                current_process,
+                &mut dupe,
+                0,
+                BOOL(0),
+                DUPLICATE_SAME_ACCESS,
+            )
+        }
+        .map_err(|err| format!("DuplicateHandle Error: {err}"))?;
+        Ok(Self(dupe))
+    }
+
+    pub(crate) fn terminate(&self) -> std::io::Result<()> {
         unsafe { TerminateProcess(self.0, u32::MAX) }.map_err(|_| std::io::Error::last_os_error())
     }
 

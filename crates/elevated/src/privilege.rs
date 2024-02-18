@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use windows::Win32::System::Threading::PROCESS_SYNCHRONIZE;
 use windows::{
     core::PCSTR,
@@ -20,14 +20,19 @@ use windows::{
     },
 };
 
+use crate::execute_tasks;
 use crate::process::ProcessHandle;
 use crate::token::ProcessToken;
-use crate::{
-    util::{create_process, CommandLineBuilder, ProcessControlFlow},
-    ForkResult,
-};
+use crate::util::CommandLineBuilder;
 
-#[ctor::ctor]
+pub fn execute_elevation_and_tasks() {
+    elevate_by_command_line();
+    match execute_tasks() {
+        Ok(_) => todo!(),
+        Err(err) => println!("execute_tasks error: {err}"),
+    };
+}
+
 fn elevate_by_command_line() {
     if let Some(ElevateToken::Elevate { port, ppid }) = ElevateToken::from_command_line() {
         listen_parent_process_exit(ppid);
@@ -190,34 +195,6 @@ impl ElevationClient {
     }
 }
 
-pub trait ElevatedOperation: DeserializeOwned + Serialize {
-    fn id() -> &'static str;
-
-    fn check() -> Result<(), String> {
-        try_execute_task::<Self>(Self::id())
-    }
-
-    fn execute(&self) -> Result<(), String> {
-        if is_elevated() {
-            unreachable!();
-        }
-        let ret = create_process(
-            |pid| match GLOBAL_CLIENT.request(ElevationRequest::new(pid)) {
-                Ok(_) => ProcessControlFlow::ResumeMainThread,
-                Err(_) => ProcessControlFlow::Terminate,
-            },
-        )
-        .unwrap();
-        if matches!(ret, ForkResult::Child) {
-            self.execute().unwrap();
-        }
-
-        Ok(())
-    }
-
-    fn run(&self);
-}
-
 #[derive(Debug)]
 pub enum ElevateToken {
     Elevate { port: u16, ppid: u32 },
@@ -320,15 +297,4 @@ pub fn run_as(exe: &str, cmd: &str) {
             SW_HIDE,
         )
     };
-}
-
-pub fn try_execute_task<T: ElevatedOperation>(id: &str) -> Result<(), String> {
-    match ElevateToken::from_command_line() {
-        Some(ElevateToken::Execute { task_id, payload }) if id == task_id => {
-            let inst: T = serde_json::from_str(&payload).map_err(|err| format!("{err}"))?;
-            inst.run();
-            std::process::exit(0);
-        }
-        _ => Ok(()),
-    }
 }
