@@ -18,7 +18,7 @@ dependencies = [
 
 [[package]]
 name = "elevated"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "elevated-derive",
  "ntapi",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "elevated-derive"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "quote",
  "syn",
